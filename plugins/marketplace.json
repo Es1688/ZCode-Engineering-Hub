@@ -1,0 +1,13 @@
+{
+  "name": "dev-it-zcode",
+  "plugins": [
+    {
+      "name": "adversarial-review",
+      "source": "./adversarial-review",
+      "version": "0.1.0",
+      "displayName": "Adversarial Review",
+      "description": "Adversarial code/plan review with an independent BYOK reviewer subagent (variant B).",
+      "category": "developer-tools"
+    }
+  ]
+}
