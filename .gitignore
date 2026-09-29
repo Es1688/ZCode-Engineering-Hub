@@ -1,0 +1,14 @@
+# Секреты
+.env
+*.key
+
+# Офисные lock-файлы (LibreOffice)
+.~lock.*#
+
+# ZCode служебное (project.yaml и tasks/ — коммитятся)
+.zcode/plans/
+.zcode/workspace/
+
+# Вложенный независимый репозиторий (эталонный импорт upstream,
+# версионируется сам собой — в репозиторий hub не входит)
+adversarial-review-master/

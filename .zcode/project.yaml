@@ -1,0 +1,23 @@
+version: 1
+name: zcode-hub
+type: engineering-hub            # стандарты, ADR, шаблоны и плагины кластера
+description: ZCode Engineering Hub — стандарт инженерной среды кластера ~/work
+
+repository:
+  platform: github               # private; создаётся при первом push
+  default_branch: main
+  strategy: github-flow
+
+quality:
+  test: null                     # документационный проект; проверка — zcode-doctor
+  lint: null
+
+constraints:
+  - templates/ — эталон стандарта; правки только через задачу (их копируют новые проекты)
+  - adversarial-review-master/ — чужой репозиторий (upstream-импорт); не изменять, в git hub не включать
+  - журналы ZCODE-HUB-DESIGN.md ведутся хронологически; старые записи не переписывать
+
+ai:
+  allow_shell: controlled
+  allow_git_push: confirm
+  execution_mode: build          # план | build | yolo (политика Hub — §6 техпроекта)
