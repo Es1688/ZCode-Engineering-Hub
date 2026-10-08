@@ -1,23 +1,26 @@
-> **Статус реализации (обновлено 29.09.2026).** Этот документ — исходная концепция;
+> **Статус реализации (обновлено 01.10.2026).** Этот документ — исходная концепция;
 > исполнение ведётся по техпроекту `ZCODE-HUB-DESIGN.md` (журналы §12–§14), решениям
 > `docs/adr/0001-engineering-hub-adoption.md` и ADR-001 о совместимости
 > («Совместимость ZCode с Engineering Hub и скиллом adversarial-review.md»).
+> Итоговое устройство Hub — `ZCODE-HUB-LAYOUT.md` (as-built, единственный источник истины).
 >
 > **Выполнено.** Фаза I — фундамент: Level 0 (`~/.zcode/AGENTS.md`), project.yaml
 > в 6 из 7 проектов, шаблоны (`templates/`), git init + первые коммиты в 6 репозиториях.
 > Фаза II — пилот стандарта: BUBBLES _jupiter, Kutuncev, t-invest-skill (feature-ветки,
-> задачи Level 2, Conventional Commits, squash-merge по гейту Level C). Фаза III
-> (частично): 5 глобальных skills (zcode-doctor, project-onboarding, project-health,
+> задачи Level 2, Conventional Commits, squash-merge по гейту Level C). Фаза III —
+> завершена 01.10: 5 глобальных skills (zcode-doctor, project-onboarding, project-health,
 > git-start-task, git-finish-task), первый CI кластера (Kutuncev → GitHub Actions),
-> push Kutuncev → `Es1688/CMR`, полигон `openrouter_chat`. 29.09 — **первый плагин
-> кластера `adversarial-review`**: adversarial-ревью кода/планов независимым
-> BYOK-ревьюером (`openrouter/openai/gpt-5.3-codex` против GLM-lead) — ниша `git/review`
-> из п.3; живая валидация: 3 раунда полного протокола, ревьюер нашёл и заложенные,
-> и собственные новые дефекты (ADR-001, вариант B).
+> полигон `openrouter_chat`, первый плагин кластера `adversarial-review` (29.09, ADR-001
+> вариант B; пилот на реальном проекте валидировал терминал ABORT), сам hub под git и
+> push → `Es1688/ZCode-Engineering-Hub` (29.09), онбординг и push stelthVPN (30.09),
+> **слой принуждения hub-guard** (01.10, ADR-0002: hook PreToolUse, 18 правил по Level 0,
+> все режимы включая yolo; старт — shadow).
 >
-> **Не сделано.** Push остальных 5 репозиториев (нужен gh CLI либо ручное создание);
-> перевод проектов в режим `build` (шаг 8 дорожной карты); hooks-политика уровней A–D;
-> Фаза IV (кластерная автоматизация). Внешних MCP — 0 (по политике п.4).
+> **Не сделано.** Push 6 репозиториев без remote (нужен gh CLI либо ручное создание);
+> перевод проектов в режим `build` (шаг 8 дорожной карты); переход guard
+> shadow → enforce (критерии ADR-0002 п.3); финал протокола adversarial-review на реальном
+> проекте (инцидент провайдера OpenRouter — баланс/ключ); Фаза IV (кластерная
+> автоматизация). Внешних MCP — 0 (по политике п.4).
 
 ZCode Engineering Hub — единая среда управления разработкой, в которой ZCode является оркестратором проектов, Git — системой контроля изменений, Skills — стандартизированными процессами, MCP — интерфейсами к внешним системам, а Rules/Knowledge — системой инженерных знаний и политики.
 
