@@ -48,10 +48,18 @@ python3 ~/.zcode/hooks/guard/guard.py --report 7
 | `ask_fallback` | `deny` (по умолчанию) или `allow` |
 | `allow_once_ttl_min` | срок действия токена Level C |
 | `write_allow_roots` | каталоги вне workspace, куда запись разрешена (`/tmp`, `/var/tmp`) |
+| `strict_fs_root` | жёсткая граница ФС: чтение вне этого корня блокируется (пусто = выключено) |
+| `read_allow_roots` | каталоги вне `strict_fs_root`, чтение которых разрешено (`/tmp`, `/var/tmp`) |
 | `protected_data_names` | имена каталогов эталонных данных (`DATASTOR`, `REPORTS`, `legacy`) |
 | `disabled_rules` | список ID правил, которые отключены |
 
-Переключение режима: `python3 install_guard.py --apply --mode enforce` (и `--ask-supported yes`). Перезапускать ZCode после смены режима не нужно: `guard.json` читается при каждом вызове.
+Переключение режима: `python3 install_guard.py --apply --mode enforce` (и `--ask-supported yes`). Граница ФС: `python3 install_guard.py --apply --strict-fs-root ~/work` (сброс — `--strict-fs-root ''`). Перезапускать ZCode после смены режима не нужно: `guard.json` читается при каждом вызове.
+
+## Жёсткая граница ФС (`strict_fs_root`)
+
+Включена с 2026-10-29: `strict_fs_root=/home/egor/work`, режим `enforce`. Правило **G-READ-OUTSIDE** (Level C) блокирует чтение любых путей вне корня — файловыми инструментами (Read/Glob/Grep) и в bash: `cat`/readers, редиректы `<`, источники `cp`/`rsync`, `source`, `cd` за границу, файлы сценариев интерпретаторов (`python x.py`, `bash x.sh`) и raw-упоминания путей `~/…` вне корня в `python -c` / `eval`.
+
+Разрешено помимо корня: чтение системных каталогов (`/usr`, `/etc`, `/proc`, …) и `read_allow_roots` (`/tmp`, `/var/tmp`); запись — `write_allow_roots`. Токен Level C снимает G-READ-OUTSIDE на 10 минут, но не трогает `~/.ssh` (G-READ-SSH, Level D).
 
 ## Level C с вашего разрешения
 
@@ -74,4 +82,4 @@ python3 install_guard.py --uninstall --apply       # снять регистра
 
 ## Что hook не умеет
 
-Это страховка от ошибок модели, не граница безопасности. Скрипты (`python -c`, `bash x.sh`), команды через переменные и экзотическое кодирование он не разбирает. Полный список в ADR-0002.
+Это страховка от ошибок модели, не граница безопасности. Команды через переменные и экзотическое кодирование он не разбирает; при включённой `strict_fs_root` raw-эвристика ловит упоминания путей `~/…` вне корня в `python -c` / `eval`, но не видит закодированные пути (base64 и т.п.) и содержимое запускаемых сценариев. Полный список в ADR-0002.

@@ -6,6 +6,11 @@ Modes (~/.zcode/hooks/guard/guard.json, key "mode"):
   shadow   decide + LOG only, never blocks (default)
   enforce  block via PreToolUse "deny" / "ask"
 
+Strict FS boundary ("strict_fs_root", e.g. "/home/egor/work"): when set, reading
+any path outside that root, "read_allow_roots" and system dirs is blocked
+(G-READ-OUTSIDE, Level C). cd into forbidden paths, interpreter script files and
+raw mentions of $HOME-subpaths (python -c, eval, ...) are covered too.
+
 Design rules:
   * decisions depend on tool / command / path, never on ZCode's `mode` field;
   * any internal error -> allow (fail-open) + log;
@@ -41,6 +46,8 @@ DEFAULTS = {
     "ask_fallback": "deny",       # what an "ask" becomes when ask is unsupported: deny | allow
     "allow_once_ttl_min": 10,     # lifetime of the Level C token file
     "write_allow_roots": ["/tmp", "/var/tmp"],
+    "strict_fs_root": "",         # non-empty: hard read boundary at this root (G-READ-OUTSIDE)
+    "read_allow_roots": ["/tmp", "/var/tmp"],
     "protected_data_names": ["DATASTOR", "REPORTS", "legacy"],
     "disabled_rules": [],
 }
@@ -60,13 +67,14 @@ RULES = {
     "G-WRITE-REFDATA": ("D", "deny", "эталонные/оригинальные данные не изменять"),
     "G-WRITE-OUTSIDE": ("B", "ask", "запись вне текущего workspace"),
     "G-READ-SSH": ("D", "deny", "чтение приватных ключей ~/.ssh запрещено"),
+    "G-READ-OUTSIDE": ("C", "ask", "чтение вне рабочего корня ~/work запрещено (жёсткая граница ФС)"),
     "G-READ-SECRET": ("B", "ask", "чтение файла с секретами или ~/.zcode: содержимое попадёт в контекст модели"),
     "G-PIPE-TO-SHELL": ("D", "deny", "скачивание или декодирование с немедленным исполнением (curl|sh)"),
     "G-SUDO": ("D", "ask", "повышение привилегий (sudo)"),
     "G-SQL-DESTRUCTIVE": ("D", "ask", "деструктивный SQL (DROP/TRUNCATE)"),
     "G-SYSTEM": ("D", "deny", "системная операция (mkfs/shutdown/запись в устройство)"),
 }
-LEVEL_C = {"G-PUSH", "G-MERGE-MAIN", "G-RELEASE"}
+LEVEL_C = {"G-PUSH", "G-MERGE-MAIN", "G-RELEASE", "G-READ-OUTSIDE"}
 SEVERITY = {"note": 1, "allow": 0, "ask": 2, "deny": 3}
 
 SECRET_RE = re.compile(
@@ -76,6 +84,8 @@ SECRET_RE = re.compile(
 
 SYSTEM_DIRS = ("/etc", "/usr", "/boot", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/var",
                "/opt", "/root", "/sys", "/proc", "/srv", "/dev", "/run", "/snap")
+# readable under strict_fs_root policy: system dirs minus other users' homes
+READABLE_SYSTEM_DIRS = tuple(d for d in SYSTEM_DIRS if d != "/root")
 SAFE_DEV = {"/dev/null", "/dev/tty", "/dev/stdout", "/dev/stderr", "/dev/stdin", "/dev/zero"}
 MAIN_BRANCHES = {"main", "master"}
 SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
@@ -173,8 +183,15 @@ class Ctx:
         self.cwd = os.path.realpath(cwd)
         self.cfg = cfg
         self.allow_roots = [os.path.realpath(r) for r in cfg["write_allow_roots"]]
+        self.fs_root = os.path.realpath(cfg["strict_fs_root"]) if cfg["strict_fs_root"] else ""
+        self.read_roots = [os.path.realpath(r) for r in cfg["read_allow_roots"]]
         self.refnames = set(cfg["protected_data_names"])
         self.progs = []
+
+    def read_ok(self, path):
+        return (under(path, self.fs_root)
+                or any(under(path, r) for r in self.read_roots)
+                or any(under(path, d) for d in READABLE_SYSTEM_DIRS))
 
 
 def add(out, rule, detail=""):
@@ -214,6 +231,8 @@ def classify_read(path, ctx, out, detail=""):
             add(out, "G-READ-SECRET", detail or path)
     elif is_secret_name(path):
         add(out, "G-READ-SECRET", detail or path)
+    if ctx.fs_root and not ctx.read_ok(path):
+        add(out, "G-READ-OUTSIDE", detail or path)
 
 
 # ----------------------------------------------------------------- git helpers
@@ -523,13 +542,22 @@ def handle_cmd(cmd, ctx, st, depth, out):
 
     if prog in ("cd", "pushd"):
         tgt = args[0] if args else "~"
-        st["vcwd"] = None if tgt == "-" else resolve(tgt, st["vcwd"])
+        p = None if tgt == "-" else resolve(tgt, st["vcwd"])
+        if p is not None and ctx.fs_root and not ctx.read_ok(p):
+            add(out, "G-READ-OUTSIDE", "cd " + tgt)
+        st["vcwd"] = p
         return
     if prog in SHELLS:
         script = shell_c_script(args)
         if script is not None:
             analyze_string(script, ctx, dict(st), depth + 1, out)
+        elif args and not args[0].startswith("-"):
+            classify_read(resolve(args[0], st["vcwd"]), ctx, out, prog + " " + args[0])
         return
+    if is_interp(prog) and args:
+        first = next((a for a in args if not a.startswith("-")), None)
+        if first is not None:
+            classify_read(resolve(first, st["vcwd"]), ctx, out, prog + " " + first)
     if prog == "eval":
         analyze_string(" ".join(args), ctx, dict(st), depth + 1, out)
         return
@@ -676,6 +704,20 @@ RAW_CHECKS = [
 ]
 
 
+def scan_home_outside(s, ctx, out):
+    """Raw heuristic: mentions of $HOME-subpaths outside fs_root (python -c, eval, obfuscation)."""
+    if not ctx.fs_root or not ctx.fs_root.startswith(HOME + os.sep):
+        return
+    rel_root = os.path.relpath(ctx.fs_root, HOME)
+    rx = re.compile(r"(?:~|\$HOME|%s)/([^\s/\"'`;&|<>)]+)" % re.escape(HOME))
+    seen = set()
+    for m in rx.finditer(s):
+        seg = m.group(1)
+        if seg and seg != rel_root and seg not in seen:
+            seen.add(seg)
+            add(out, "G-READ-OUTSIDE", "raw ~/" + seg)
+
+
 def analyze_bash(cmd, ctx):
     out = []
     st = {"vcwd": ctx.cwd, "branch": None, "dl": False}
@@ -683,6 +725,8 @@ def analyze_bash(cmd, ctx):
     for rx, rule in RAW_CHECKS:
         if rx.search(cmd):
             add(out, rule, clip(cmd, 60))
+    if ctx.fs_root:
+        scan_home_outside(strip_heredocs(cmd.replace("\\\n", " ")), ctx, out)
     return out
 
 

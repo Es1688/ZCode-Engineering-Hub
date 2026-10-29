@@ -5,6 +5,7 @@ Default is DRY-RUN: nothing is written. Use --apply.
   python3 install_guard.py                        # plan
   python3 install_guard.py --apply                # install in shadow mode (log only)
   python3 install_guard.py --apply --mode enforce # switch to blocking
+  python3 install_guard.py --apply --strict-fs-root ~/work  # hard read boundary
   python3 install_guard.py --apply --ask-supported yes   # after the `ask` test passed
   python3 install_guard.py --uninstall --apply    # remove the hook entry (files and logs stay)
 
@@ -28,6 +29,7 @@ ZCODE_CFG = HOME / ".zcode" / "cli" / "config.json"
 MARK = "hooks/guard/guard.py"
 DEFAULTS = {"mode": "shadow", "ask_supported": False, "ask_fallback": "deny", "allow_once_ttl_min": 10,
             "write_allow_roots": ["/tmp", "/var/tmp"], "protected_data_names": ["DATASTOR", "REPORTS", "legacy"],
+            "strict_fs_root": "", "read_allow_roots": ["/tmp", "/var/tmp"],
             "disabled_rules": []}
 
 
@@ -113,6 +115,8 @@ def main():
     ap.add_argument("--uninstall", action="store_true")
     ap.add_argument("--mode", choices=["off", "shadow", "enforce"])
     ap.add_argument("--ask-supported", choices=["yes", "no"])
+    ap.add_argument("--strict-fs-root", metavar="PATH",
+                    help="set the hard read boundary root (expanduser/realpath); '' clears it")
     a = ap.parse_args()
     py = pick_python()
 
@@ -125,6 +129,8 @@ def main():
         new_g["mode"] = a.mode
     if a.ask_supported:
         new_g["ask_supported"] = a.ask_supported == "yes"
+    if a.strict_fs_root is not None:
+        new_g["strict_fs_root"] = os.path.realpath(os.path.expanduser(a.strict_fs_root))
 
     print("mode:        %s" % ("APPLY" if a.apply else "DRY-RUN (nothing written)"))
     print("zcode cfg:   %s (%s)" % (ZCODE_CFG, "exists" if existed else "will be created"))
@@ -133,8 +139,9 @@ def main():
     for n in notes:
         print(" -", n)
     if not a.uninstall:
-        print("guard.json:  mode=%s ask_supported=%s (%s)" % (new_g["mode"], new_g["ask_supported"],
-                                                              "update" if gexisted else "new"))
+        print("guard.json:  mode=%s ask_supported=%s strict_fs_root=%s (%s)" % (
+            new_g["mode"], new_g["ask_supported"], new_g["strict_fs_root"] or "(off)",
+            "update" if gexisted else "new"))
     if not a.apply:
         print("\nRe-run with --apply to write.")
         return

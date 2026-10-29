@@ -160,6 +160,37 @@ def main():
     CFG["write_allow_roots"] = ["/tmp", TMP]              # workspace itself lies inside a scratch root
     bash("rm -rf build", ("ask", "G-RM-RECURSIVE"))
     CFG["write_allow_roots"] = saved
+
+    # ---- strict FS boundary (strict_fs_root)
+    saved_root, saved_read = CFG["strict_fs_root"], CFG["read_allow_roots"]
+    CFG["strict_fs_root"] = os.path.join(H, "work")
+    CFG["read_allow_roots"] = [SCRATCH]
+    bash("cat ~/Downloads/x.pdf", ("ask", "G-READ-OUTSIDE"))
+    bash("cat %s/work/../secret" % H, ("ask", "G-READ-OUTSIDE"))
+    bash("cd ~/Downloads && ls", ("ask", "G-READ-OUTSIDE"))
+    bash("cp ~/Downloads/a.pdf .", ("ask", "G-READ-OUTSIDE"))
+    bash("python3 -c \"open('%s/.ssh/id_rsa')\"" % H, ("ask", "G-READ-OUTSIDE"))
+    bash("python3 ~/x.py", ("ask", "G-READ-OUTSIDE"))
+    bash("bash ~/x.sh", ("ask", "G-READ-OUTSIDE"))
+    bash("source ~/env.sh", ("ask", "G-READ-OUTSIDE"))
+    bash("cat %s" % os.path.join(H, ".zcode", "cli", "config.json"), ("ask", "G-READ-OUTSIDE"))
+    bash("cat /etc/hostname", "allow")
+    bash("cat %s" % SCRATCH, "allow")
+    tool("Read", {"file_path": H + "/Downloads/x.pdf"}, ("ask", "G-READ-OUTSIDE"))
+    tool("Read", {"file_path": H + "/other/f"}, ("ask", "G-READ-OUTSIDE"))
+    tool("Read", {"file_path": "/home/alice/f"}, ("ask", "G-READ-OUTSIDE"))
+    tool("Glob", {"pattern": "*", "path": H + "/Downloads"}, ("ask", "G-READ-OUTSIDE"))
+    tool("Read", {"file_path": WS + "/README.md"}, "allow")
+    tool("Read", {"file_path": "/etc/hostname"}, "allow")
+    tool("Read", {"file_path": SCRATCH + "/f"}, "allow")
+    tool("Write", {"file_path": SCRATCH + "/f", "content": "x"}, "allow")
+    token = guard.TOKEN_FILE
+    open(token, "w").write("")
+    bash("cat ~/Downloads/x.pdf", "allow")               # G-READ-OUTSIDE is Level C
+    bash("cat ~/.ssh/id_rsa", ("deny", "G-READ-SSH"))     # Level D survives the token
+    os.remove(token)
+    CFG["strict_fs_root"], CFG["read_allow_roots"] = saved_root, saved_read
+
     r = guard.decide({"tool_name": "Bash", "tool_input": {"command": "g=git; $g push"}, "cwd": WS}, CFG)
     check("dynamic command is only noted", {"tool_name": "Bash", "tool_input": {"command": "g=git; $g push"}, "cwd": WS}, "allow")
     assert any(rule == "NOTE-dynamic-command" for rule, _ in r["findings"]), r
